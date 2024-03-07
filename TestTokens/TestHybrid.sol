@@ -7,7 +7,7 @@ import "https://github.com/Dexaran/ERC223-token-standard/blob/development/utils/
 /**
  * @title Reference implementation of the ERC223 standard token.
  */
-contract ERC223Token is IERC223 {
+contract HybridStandardToken is IERC223 {
 
     event Approval(address indexed owner, address indexed spender, uint256 value);
 
@@ -34,7 +34,7 @@ contract ERC223Token is IERC223 {
         _name     = "Test Token C";
         _symbol   = "TTC";
         _decimals = 18;
-        balances[msg.sender] = 10000 * _decimals;
+        balances[msg.sender] = 10000 * 18;
     }
 
     /**
