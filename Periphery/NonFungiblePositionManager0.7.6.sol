@@ -17,6 +17,8 @@ import './base/PeripheryValidation.sol';
 import './base/PoolInitializer.sol';
 
 
+/// SwapCallbackData memory data = abi.decode(_data, (SwapCallbackData));
+
 ///////////////////// IMPORTING HELL /////////////////////////////////
 
 
@@ -1980,14 +1982,52 @@ abstract contract ERC721Permit is BlockTimestamp, ERC721, IERC721Permit {
     }
 }
 
+abstract contract IERC223Recipient {
+
+
+ struct ERC223TransferInfo
+    {
+        address token_contract;
+        address sender;
+        uint256 value;
+        bytes   data;
+    }
+    
+    ERC223TransferInfo private tkn;
+    
+/**
+ * @dev Standard ERC223 function that will handle incoming token transfers.
+ *
+ * @param _from  Token sender address.
+ * @param _value Amount of tokens.
+ * @param _data  Transaction metadata.
+ */
+    function tokenReceived(address _from, uint _value, bytes memory _data) public virtual returns (bytes4)
+    {
+        /**
+         * @dev Note that inside of the token transaction handler the actual sender of token transfer is accessible via the tkn.sender variable
+         * (analogue of msg.sender for Ether transfers)
+         * 
+         * tkn.value - is the amount of transferred tokens
+         * tkn.data  - is the "metadata" of token transfer
+         * tkn.token_contract is most likely equal to msg.sender because the token contract typically invokes this function
+        */
+        tkn.token_contract = msg.sender;
+        tkn.sender         = _from;
+        tkn.value          = _value;
+        tkn.data           = _data;
+        
+        // ACTUAL CODE
+
+        return 0x8943ec02;
+    }
+}
+
 ////////////////////////// END OF IMPORTS REWORK //////////////////////////////////////////
-
-
-
 
 /// @title NFT positions
 /// @notice Wraps Uniswap V3 positions in the ERC721 non-fungible token interface
-contract NonfungiblePositionManager is
+contract DexaransNonfungiblePositionManager is
     INonfungiblePositionManager,
     Multicall,
     ERC721Permit,
@@ -1995,7 +2035,8 @@ contract NonfungiblePositionManager is
     PoolInitializer,
     LiquidityManagement,
     PeripheryValidation,
-    SelfPermit
+    SelfPermit,
+    IERC223Recipient
 {
     // details about the uniswap position
     struct Position {
@@ -2033,14 +2074,35 @@ contract NonfungiblePositionManager is
     uint80 private _nextPoolId = 1;
 
     /// @dev The address of the token descriptor contract, which handles generating token URIs for position tokens
-    address private immutable _tokenDescriptor;
+    // address private immutable _tokenDescriptor;
 
     constructor(
         address _factory,
-        address _WETH9,
-        address _tokenDescriptor_
+        address _WETH9 //,
+        /* address _tokenDescriptor_ */
     ) ERC721Permit('Uniswap V3 Positions NFT-V1', 'UNI-V3-POS', '1') PeripheryImmutableState(_factory, _WETH9) {
-        _tokenDescriptor = _tokenDescriptor_;
+        // _tokenDescriptor = _tokenDescriptor_; removed during testing
+    }
+    
+    ERC223TransferInfo private tkn;
+    function tokenReceived(address _from, uint _value, bytes memory _data) public override returns (bytes4)
+    {
+        /**
+         * @dev Note that inside of the token transaction handler the actual sender of token transfer is accessible via the tkn.sender variable
+         * (analogue of msg.sender for Ether transfers)
+         * 
+         * tkn.value - is the amount of transferred tokens
+         * tkn.data  - is the "metadata" of token transfer
+         * tkn.token_contract is most likely equal to msg.sender because the token contract typically invokes this function
+        */
+        tkn.token_contract = msg.sender;
+        tkn.sender         = _from;
+        tkn.value          = _value;
+        tkn.data           = _data;
+        
+        depositERC223(_from, msg.sender, _value);
+
+        return 0x8943ec02;
     }
 
     /// @inheritdoc INonfungiblePositionManager
@@ -2155,7 +2217,8 @@ contract NonfungiblePositionManager is
 
     function tokenURI(uint256 tokenId) public view override(ERC721, IERC721Metadata) returns (string memory) {
         require(_exists(tokenId));
-        return INonfungibleTokenPositionDescriptor(_tokenDescriptor).tokenURI(this, tokenId);
+        //return INonfungibleTokenPositionDescriptor(_tokenDescriptor).tokenURI(this, tokenId);
+        return "";
     }
 
     // save bytecode by removing implementation of unused method
