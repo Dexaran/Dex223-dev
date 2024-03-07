@@ -1,13 +1,116 @@
 pragma solidity >=0.7.0;
 
-import "https://github.com/Dexaran/ERC223-token-standard/blob/development/token/ERC223/IERC223.sol";
-import "https://github.com/Dexaran/ERC223-token-standard/blob/development/token/ERC223/IERC223Recipient.sol";
-import "https://github.com/Dexaran/ERC223-token-standard/blob/development/utils/Address.sol";
+//import "https://github.com/Dexaran/ERC223-token-standard/blob/development/token/ERC223/IERC223.sol";
+abstract contract IERC223 {
+    
+    function name()        public view virtual returns (string memory);
+    function symbol()      public view virtual returns (string memory);
+    function decimals()    public view virtual returns (uint8);
+    function totalSupply() public view virtual returns (uint256);
+    
+    /**
+     * @dev Returns the balance of the `who` address.
+     */
+    function balanceOf(address who) public virtual view returns (uint);
+        
+    /**
+     * @dev Transfers `value` tokens from `msg.sender` to `to` address
+     * and returns `true` on success.
+     */
+    function transfer(address to, uint value) public virtual returns (bool success);
+        
+    /**
+     * @dev Transfers `value` tokens from `msg.sender` to `to` address with `data` parameter
+     * and returns `true` on success.
+     */
+    function transfer(address to, uint value, bytes calldata data) public virtual returns (bool success);
+     
+     /**
+     * @dev Event that is fired on successful transfer.
+     */
+    event Transfer(address indexed from, address indexed to, uint value, bytes data);
+}
+
+//import "https://github.com/Dexaran/ERC223-token-standard/blob/development/token/ERC223/IERC223Recipient.sol";
+
+abstract contract IERC223Recipient {
+
+
+ struct ERC223TransferInfo
+    {
+        address token_contract;
+        address sender;
+        uint256 value;
+        bytes   data;
+    }
+    
+    ERC223TransferInfo private tkn;
+    
+/**
+ * @dev Standard ERC223 function that will handle incoming token transfers.
+ *
+ * @param _from  Token sender address.
+ * @param _value Amount of tokens.
+ * @param _data  Transaction metadata.
+ */
+    function tokenReceived(address _from, uint _value, bytes memory _data) public virtual returns (bytes4)
+    {
+        /**
+         * @dev Note that inside of the token transaction handler the actual sender of token transfer is accessible via the tkn.sender variable
+         * (analogue of msg.sender for Ether transfers)
+         * 
+         * tkn.value - is the amount of transferred tokens
+         * tkn.data  - is the "metadata" of token transfer
+         * tkn.token_contract is most likely equal to msg.sender because the token contract typically invokes this function
+        */
+        tkn.token_contract = msg.sender;
+        tkn.sender         = _from;
+        tkn.value          = _value;
+        tkn.data           = _data;
+        
+        // ACTUAL CODE
+
+        return 0x8943ec02;
+    }
+}
+
+//import "https://github.com/Dexaran/ERC223-token-standard/blob/development/utils/Address.sol";
+
+library Address {
+    /**
+     * @dev Returns true if `account` is a contract.
+     *
+     * This test is non-exhaustive, and there may be false-negatives: during the
+     * execution of a contract's constructor, its address will be reported as
+     * not containing a contract.
+     *
+     * > It is unsafe to assume that an address for which this function returns
+     * false is an externally-owned account (EOA) and not a contract.
+     */
+    function isContract(address account) internal view returns (bool) {
+        // This method relies in extcodesize, which returns 0 for contracts in
+        // construction, since the code is only stored at the end of the
+        // constructor execution.
+
+        uint256 size;
+        // solhint-disable-next-line no-inline-assembly
+        assembly { size := extcodesize(account) }
+        return size > 0;
+    }
+
+    /**
+     * @dev Converts an `address` into `address payable`. Note that this is
+     * simply a type cast: the actual underlying value is not changed.
+     */
+    function toPayable(address account) internal pure returns (address payable) {
+        return payable(account);
+    }
+}
 
 /**
  * @title Reference implementation of the ERC223 standard token.
  */
-contract HybridStandardToken is IERC223 {
+contract ERC223Token is IERC223 {
 
     event Approval(address indexed owner, address indexed spender, uint256 value);
 
@@ -31,10 +134,10 @@ contract HybridStandardToken is IERC223 {
      
     constructor()
     {
-        _name     = "Test Token C";
-        _symbol   = "TTC";
+        _name     = "Test Token D";
+        _symbol   = "TTD";
         _decimals = 18;
-        balances[msg.sender] = 10000 * 18;
+        balances[msg.sender] = 999999999999999999999 * 18;
     }
 
     /**
@@ -119,8 +222,6 @@ contract HybridStandardToken is IERC223 {
         emit Transfer(msg.sender, _to, _value, _data);
         return true;
     }
-
-    
     
     /**
      * @dev Transfer the specified amount of tokens to the specified address.
@@ -148,6 +249,11 @@ contract HybridStandardToken is IERC223 {
      */
     function allowance(address owner, address spender) public view returns (uint256) {
         return _allowances[owner][spender];
+    }
+
+    function transferFrom(address from, address to, uint256 quantity) public returns (bool) {
+        _transferFrom(from, to, quantity);
+        return true;
     }
 
     function approve(address spender, uint256 amount) public returns (bool) {
