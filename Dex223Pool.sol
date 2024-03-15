@@ -173,6 +173,12 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
             (bool success,) = address(this).delegatecall(_data);
             require(success, "ERC223 internal call failed");
         }
+
+        // WARNING! Leaving tokens on the Pool's balance makes them vulnerable to arbitrage,
+        //          tokens must be extracted after the execution of the logic following the deposit.
+
+        ////  Commented for testing purposes.
+        ////  if (erc223deposit[_from][msg.sender] != 0) TransferHelper.safeTransfer(msg.sender, _from, erc223deposit[_from][msg.sender]);
         
         /*
         bytes4 _sig = _data[0] |  bytes4(_data[1]) >> 8 | bytes4(_data[2]) >> 16  | bytes4(_data[3]) >> 24;
