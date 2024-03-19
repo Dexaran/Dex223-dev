@@ -86,8 +86,19 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
         uint128 token1;
     }
     
-    //address private swap_sender;
-    //address private swap_token;
+    struct ERC223TransferInfo
+    {
+        address token_contract;
+        address sender;
+        uint256 value;
+        bytes   data;
+    }
+    
+    ERC223TransferInfo private tkn;
+    
+    address private swap_sender;
+    address private swap_token;
+
     mapping(address => mapping(address => uint)) internal erc223deposit;    // user => token => value
     
     
@@ -122,7 +133,6 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
         _;
     }
 
-/*
     modifier adjustableSender() {
         if (tkn.sender != address(0))
         {
@@ -137,7 +147,6 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
 
         swap_sender = address(0);
     }
-*/
 
     constructor() {
         int24 _tickSpacing;
@@ -165,10 +174,10 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
          * tkn.token_contract is most likely equal to msg.sender because the token contract typically invokes this function
         */
 
-        erc223deposit[_from][msg.sender] = erc223deposit[_from][msg.sender] + _value;   // add token to user balance
+        erc223deposit[_from][msg.sender] += _value;   // add token to user balance
         if (_data.length >= 36) { // signature + at least 1 parameter
-            //swap_sender = _from;
-            //swap_token  = msg.sender;
+            swap_sender = _from;
+            swap_token  = msg.sender;
             //(bool success,) = address(this).call{value:0}(_data);
             (bool success,) = address(this).delegatecall(_data);
             require(success, "ERC223 internal call failed");
@@ -195,9 +204,10 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
 
     // allow user to withdraw transferred ERC223 tokens
     function withdraw(address token, uint amount) external {
-        uint userBalance = erc223deposit[msg.sender][token];
-        require(userBalance >= amount, "Insufficient");
-        erc223deposit[msg.sender][token] = userBalance - amount;
+        uint _userBalance = erc223deposit[msg.sender][token];
+        if(amount == 0) amount = _userBalance;
+        require(_userBalance >= amount, "Insufficient");
+        erc223deposit[msg.sender][token] = _userBalance - amount;
         TransferHelper.safeTransfer(token, msg.sender, amount);
     }
 
@@ -678,7 +688,9 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
         int256 amountSpecified,
         uint160 sqrtPriceLimitX96,
         bytes calldata data
-    ) external override noDelegateCall /*adjustableSender*/ returns (int256 amount0, int256 amount1) {
+    ) external override adjustableSender noDelegateCall // noDelegateCall will not prevent delegatecalling
+                                                        // this method from the same contract via `tokenReceived` of ERC-223
+     returns (int256 amount0, int256 amount1) {
 
         require(amountSpecified != 0, 'AS');
 
@@ -850,42 +862,42 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
 
         // do the transfers and collect payment
         // @Dexaran: Adjusting the token delivery method for ERC-20 and ERC-223 tokens
-        //           in case of ERC-223 this `swap()` func is called within `tokenReceived()` invokation
+        //           in case of ERC-223 this `swap()` func is called within `tokenReceived()` invocation
         //           so the ERC-223 tokens are already in the contract 
         //           and the amount is stored in a `erc223deposit[msg.sender][token]` variable.
         if (zeroForOne) {
             if (amount1 < 0) TransferHelper.safeTransfer(token1, recipient, uint256(-amount1));
 
             // ERC-223 depositing logic
-            if (erc223deposit[msg.sender][token0] >= uint256(amount0))
+            if (erc223deposit[swap_sender][token0] >= uint256(amount0))
             {
-                erc223deposit[msg.sender][token0] -= uint256(amount0);
+                erc223deposit[swap_sender][token0] -= uint256(amount0);
             }
             // ERC-20 depositing logic
             else 
             {
                 uint256 balance0Before = balance0();
-                IUniswapV3SwapCallback(msg.sender).uniswapV3SwapCallback(amount0, amount1, data);
+                IUniswapV3SwapCallback(swap_sender).uniswapV3SwapCallback(amount0, amount1, data);
                 require(balance0Before.add(uint256(amount0)) <= balance0(), 'IIA');
             }
         } else {
             if (amount0 < 0) TransferHelper.safeTransfer(token0, recipient, uint256(-amount0));
 
             // ERC-223 depositing logic
-            if (erc223deposit[msg.sender][token1] >= uint256(amount1))
+            if (erc223deposit[swap_sender][token1] >= uint256(amount1))
             {
-                erc223deposit[msg.sender][token1] -= uint256(amount1);
+                erc223deposit[swap_sender][token1] -= uint256(amount1);
             }
             // ERC-20 depositing logic
             else 
             {
                 uint256 balance1Before = balance1();
-                IUniswapV3SwapCallback(msg.sender).uniswapV3SwapCallback(amount0, amount1, data);
+                IUniswapV3SwapCallback(swap_sender).uniswapV3SwapCallback(amount0, amount1, data);
                 require(balance1Before.add(uint256(amount1)) <= balance1(), 'IIA');
             }
         }
 
-        emit Swap(msg.sender, recipient, amount0, amount1, state.sqrtPriceX96, state.liquidity, state.tick);
+        emit Swap(swap_sender, recipient, amount0, amount1, state.sqrtPriceX96, state.liquidity, state.tick);
         slot0.unlocked = true;
     }
 
