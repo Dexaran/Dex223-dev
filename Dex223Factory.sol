@@ -71,3 +71,35 @@ contract UniswapV3Factory is IUniswapV3Factory, UniswapV3PoolDeployer, NoDelegat
         emit FeeAmountEnabled(fee, tickSpacing);
     }
 }
+
+contract PoolAddressHelper
+{
+    function getPoolCreationCode() public view returns (bytes memory) {
+        return type(Dex223Pool).creationCode;
+    }
+    
+    function hashPoolCode(bytes memory creation_code) public view returns (bytes32 pool_hash){
+        pool_hash = keccak256(creation_code);
+    }
+    
+    function computeAddress(address factory, 
+                            address tokenA,
+                            address tokenB,
+                            uint24 fee) 
+                            external view returns (address _pool) 
+    {
+        require(tokenA < tokenB, "token1 > token0");
+        //---------------- calculate pool address
+            bytes32 _POOL_INIT_CODE_HASH  = hashPoolCode(getPoolCreationCode());
+            bytes32 pool_hash = keccak256(
+            abi.encodePacked(
+                hex'ff',
+                factory,
+                keccak256(abi.encode(tokenA, tokenB, fee)),
+                _POOL_INIT_CODE_HASH
+            )
+            );
+            bytes20 addressBytes = bytes20(pool_hash << (256 - 160));
+            _pool = address(uint160(addressBytes));
+    }
+}
