@@ -175,6 +175,11 @@ contract ERC223Token is IERC223 {
         return _decimals;
     }
 
+    function standard() public view returns (string memory)
+    {
+        return "223";
+    }
+
     /**
      * @dev See {IERC223-totalSupply}.
      */
