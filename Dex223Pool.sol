@@ -29,7 +29,7 @@ import './interfaces/callback/IUniswapV3SwapCallback.sol';
 import './interfaces/callback/IUniswapV3FlashCallback.sol';
 */
 
-contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
+contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
     using LowGasSafeMath for uint256;
     using LowGasSafeMath for int256;
     using SafeCast for uint256;
