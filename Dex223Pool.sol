@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity >=0.7.6;
+pragma abicoder v2;
 
 import './interfaces/IUniswapV3Pool.sol';
 
@@ -86,19 +87,7 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
         uint128 token1;
     }
     
-    struct ERC223TransferInfo
-    {
-        address token_contract;
-        address sender;
-        uint256 value;
-        bytes   data;
-    }
-    
-    ERC223TransferInfo private tkn;
-    
-    address private swap_sender;
-    address private swap_token;
-
+    address public swap_sender;
     mapping(address => mapping(address => uint)) internal erc223deposit;    // user => token => value
     
     
@@ -134,11 +123,7 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
     }
 
     modifier adjustableSender() {
-        if (tkn.sender != address(0))
-        {
-            swap_sender = tkn.sender;
-        } 
-        else 
+        if (swap_sender == address(0))
         {
             swap_sender = msg.sender;
         }
@@ -155,6 +140,18 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
 
         maxLiquidityPerTick = Tick.tickSpacingToMaxLiquidityPerTick(_tickSpacing);
     }
+
+/*
+    struct SwapParams
+    {
+        bytes4 sig;
+        address recipient;
+        bool zeroForOne;
+        int256 amountSpecified;
+        uint160 sqrtPriceLimitX96;
+        bytes data;
+    }
+*/
     
 /**
  * @dev Standard ERC223 function that will handle incoming token transfers.
@@ -163,24 +160,20 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
  * @param _value Amount of tokens.
  * @param _data  Transaction metadata.
  */
-    function tokenReceived(address _from, uint _value, bytes memory _data) public noDelegateCall returns (bytes4)
+    function tokenReceived(address _from, uint _value, bytes memory _data) public returns (bytes4)
     {
-        /**
-         * @dev Note that inside of the token transaction handler the actual sender of token transfer is accessible via the tkn.sender variable
-         * (analogue of msg.sender for Ether transfers)
-         * 
-         * tkn.value - is the amount of transferred tokens
-         * tkn.data  - is the "metadata" of token transfer
-         * tkn.token_contract is most likely equal to msg.sender because the token contract typically invokes this function
-        */
-
+        swap_sender = _from;
         erc223deposit[_from][msg.sender] += _value;   // add token to user balance
-        if (_data.length >= 36) { // signature + at least 1 parameter
-            swap_sender = _from;
-            swap_token  = msg.sender;
-            //(bool success,) = address(this).call{value:0}(_data);
-            (bool success,) = address(this).delegatecall(_data);
-            require(success, "ERC223 internal call failed");
+        if (_data.length != 0) {
+        /*
+            SwapParams memory data = abi.decode(_data, (SwapParams));
+            if(data.sig == this.swap.selector)
+            {
+                swap(data.recipient, data.zeroForOne, data.amountSpecified, data.sqrtPriceLimitX96, data.data);
+            }
+        */
+            (bool success, bytes memory _data_) = address(this).delegatecall(_data);
+            require(success, "23F");
         }
 
         // WARNING! Leaving tokens on the Pool's balance makes them vulnerable to arbitrage,
@@ -189,26 +182,17 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
         ////  Commented for testing purposes.
         ////  if (erc223deposit[_from][msg.sender] != 0) TransferHelper.safeTransfer(msg.sender, _from, erc223deposit[_from][msg.sender]);
         
-        /*
-        bytes4 _sig = _data[0] |  bytes4(_data[1]) >> 8 | bytes4(_data[2]) >> 16  | bytes4(_data[3]) >> 24;
-        if (_sig == this.swap.selector)
-        {
-            // More gas-efficient way to decode a function call
-        }
-        */
-
+        swap_sender = address(0);
         return 0x8943ec02;
     }
 
-
-
     // allow user to withdraw transferred ERC223 tokens
-    function withdraw(address token, uint amount) external {
-        uint _userBalance = erc223deposit[msg.sender][token];
+    function withdraw(address token, uint amount) adjustableSender public {
+        uint _userBalance = erc223deposit[swap_sender][token];
         if(amount == 0) amount = _userBalance;
-        require(_userBalance >= amount, "Insufficient");
-        erc223deposit[msg.sender][token] = _userBalance - amount;
-        TransferHelper.safeTransfer(token, msg.sender, amount);
+        require(_userBalance >= amount, "IB");
+        erc223deposit[swap_sender][token] = _userBalance - amount;
+        TransferHelper.safeTransfer(token, swap_sender, amount);
     }
 
     /// @dev Common checks for valid tick inputs.
@@ -687,8 +671,8 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
         bool zeroForOne,
         int256 amountSpecified,
         uint160 sqrtPriceLimitX96,
-        bytes calldata data
-    ) external override adjustableSender noDelegateCall // noDelegateCall will not prevent delegatecalling
+        bytes memory data
+    ) public override adjustableSender /*noDelegateCall*/ // noDelegateCall will not prevent delegatecalling
                                                         // this method from the same contract via `tokenReceived` of ERC-223
      returns (int256 amount0, int256 amount1) {
 
