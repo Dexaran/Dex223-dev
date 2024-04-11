@@ -13,8 +13,8 @@ import './Dex223Pool.sol';
 
 /// @title Canonical Uniswap V3 factory
 /// @notice Deploys Uniswap V3 pools and manages ownership and control over pool protocol fees
-contract Dex223Factory is IUniswapV3Factory, UniswapV3PoolDeployer, NoDelegateCall {
-    /// @inheritdoc IUniswapV3Factory
+contract Dex223Factory is IDex223Factory, UniswapV3PoolDeployer, NoDelegateCall {
+    // @inheritdoc IUniswapV3Factory
     address public override owner;
 
     ITokenStandardIntrospection public standardIntrospection;
@@ -23,9 +23,9 @@ contract Dex223Factory is IUniswapV3Factory, UniswapV3PoolDeployer, NoDelegateCa
     ITokenStandardConverter public converter;
     //ITokenStandardConverter converter = ITokenStandardConverter(0x08b9DfA96d4997b460dFEb1aBb994a7279dDb420);
 
-    /// @inheritdoc IUniswapV3Factory
+    // @inheritdoc IUniswapV3Factory
     mapping(uint24 => int24) public override feeAmountTickSpacing;
-    /// @inheritdoc IUniswapV3Factory
+    // @inheritdoc IUniswapV3Factory
     mapping(address => mapping(address => mapping(uint24 => address))) public override getPool;
 
     constructor() {
@@ -46,7 +46,7 @@ contract Dex223Factory is IUniswapV3Factory, UniswapV3PoolDeployer, NoDelegateCa
         return 0x8943ec02;
     }
 
-    /// @inheritdoc IUniswapV3Factory
+    // @inheritdoc IUniswapV3Factory
     function createPool(
         address tokenA,
         address tokenB,
@@ -56,14 +56,14 @@ contract Dex223Factory is IUniswapV3Factory, UniswapV3PoolDeployer, NoDelegateCa
         (address _token0_erc20, address _token0_erc223, uint8 _token0_standard) = identifyTokens(tokenA);
         (address _token1_erc20, address _token1_erc223, uint8 _token1_standard) = identifyTokens(tokenB);
         //(address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
-        
+
         require(_token0_erc20 != address(0));
         int24 tickSpacing = feeAmountTickSpacing[fee];
         require(tickSpacing != 0);
         require(getPool[_token0_erc20][_token1_erc20][fee] == address(0));
         pool = deploy(address(this), _token0_erc20, _token1_erc20, _token0_erc223, _token1_erc223, fee, tickSpacing);
         getPool[_token0_erc20][_token1_erc20][fee] = pool;
-        // populate mapping in the ALL directions.
+        // populate mapping in ALL directions.
         getPool[_token1_erc20][_token0_erc20][fee] = pool;
         getPool[_token0_erc20][_token1_erc223][fee] = pool;
         getPool[_token1_erc20][_token0_erc223][fee] = pool;
@@ -71,11 +71,11 @@ contract Dex223Factory is IUniswapV3Factory, UniswapV3PoolDeployer, NoDelegateCa
         getPool[_token0_erc223][_token1_erc223][fee] = pool;
         getPool[_token1_erc223][_token0_erc223][fee] = pool;
         getPool[_token1_erc223][_token0_erc20][fee] = pool;
-        emit PoolCreated(_token0_erc20, _token1_erc20, fee, tickSpacing, pool);
+        emit PoolCreated(_token0_erc20, _token1_erc20, _token0_erc223, _token1_erc223, fee, tickSpacing, pool);
         tokenReceivedCaller = address(0);
     }
 
-    /// @inheritdoc IUniswapV3Factory
+    // @inheritdoc IUniswapV3Factory
     function setOwner(address _owner) external override {
         require(msg.sender == owner);
         emit OwnerChanged(owner, _owner);
@@ -204,7 +204,7 @@ contract Dex223Factory is IUniswapV3Factory, UniswapV3PoolDeployer, NoDelegateCa
     }
     
 
-    /// @inheritdoc IUniswapV3Factory
+    // @inheritdoc IUniswapV3Factory
     function enableFeeAmount(uint24 fee, int24 tickSpacing) public override {
         /*  COMMENTED FOR TESTING PURPOSES
         require(msg.sender == owner);
