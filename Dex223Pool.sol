@@ -41,18 +41,12 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
     using Position for Position.Info;
     using Oracle for Oracle.Observation[65535];
 
-    struct Token 
-    {
-        address erc20;
-        address erc223;
-    }
-
     /// @inheritdoc IUniswapV3PoolImmutables
     address public immutable override factory;
-
-    Token public token0;
-    Token public token1;
-
+    /// @inheritdoc IUniswapV3PoolImmutables
+    address public immutable override token0;
+    /// @inheritdoc IUniswapV3PoolImmutables
+    address public immutable override token1;
     /// @inheritdoc IUniswapV3PoolImmutables
     uint24 public immutable override fee;
 
@@ -141,7 +135,7 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
 
     constructor() {
         int24 _tickSpacing;
-        (factory, token0.erc20, token1.erc20, fee, _tickSpacing) = IUniswapV3PoolDeployer(msg.sender).parameters();
+        (factory, token0, token1, fee, _tickSpacing) = IUniswapV3PoolDeployer(msg.sender).parameters();
         tickSpacing = _tickSpacing;
 
         maxLiquidityPerTick = Tick.tickSpacingToMaxLiquidityPerTick(_tickSpacing);
@@ -217,30 +211,20 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
     /// @dev This function is gas optimized to avoid a redundant extcodesize check in addition to the returndatasize
     /// check
     function balance0() private view returns (uint256) {
-        (bool success20, bytes memory data20) =
-            token0.erc20.staticcall(abi.encodeWithSelector(IERC20Minimal.balanceOf.selector, address(this)));
-        (bool success223, bytes memory data223) =
-            token0.erc223.staticcall(abi.encodeWithSelector(IERC20Minimal.balanceOf.selector, address(this)));
-        uint256 _balance;
-        if(success20)  _balance += abi.decode(data20, (uint256));
-        if(success223) _balance += abi.decode(data223, (uint256));
-        require((success20 && data20.length >= 32) || (success223 && data223.length >= 32));
-        return _balance;
+        (bool success, bytes memory data) =
+            token0.staticcall(abi.encodeWithSelector(IERC20Minimal.balanceOf.selector, address(this)));
+        require(success && data.length >= 32);
+        return abi.decode(data, (uint256));
     }
 
     /// @dev Get the pool's balance of token1
     /// @dev This function is gas optimized to avoid a redundant extcodesize check in addition to the returndatasize
     /// check
     function balance1() private view returns (uint256) {
-        (bool success20, bytes memory data20) =
-            token1.erc20.staticcall(abi.encodeWithSelector(IERC20Minimal.balanceOf.selector, address(this)));
-        (bool success223, bytes memory data223) =
-            token1.erc223.staticcall(abi.encodeWithSelector(IERC20Minimal.balanceOf.selector, address(this)));
-        uint256 _balance;
-        if(success20)  _balance += abi.decode(data20, (uint256));
-        if(success223) _balance += abi.decode(data223, (uint256));
-        require((success20 && data20.length >= 32) || (success223 && data223.length >= 32));
-        return _balance;
+        (bool success, bytes memory data) =
+            token1.staticcall(abi.encodeWithSelector(IERC20Minimal.balanceOf.selector, address(this)));
+        require(success && data.length >= 32);
+        return abi.decode(data, (uint256));
     }
 
     /// @inheritdoc IUniswapV3PoolDerivedState
@@ -591,11 +575,11 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
 
         if (amount0 > 0) {
             position.tokensOwed0 -= amount0;
-            TransferHelper.safeTransfer(token0.erc20, recipient, amount0);
+            TransferHelper.safeTransfer(token0, recipient, amount0);
         }
         if (amount1 > 0) {
             position.tokensOwed1 -= amount1;
-            TransferHelper.safeTransfer(token1.erc20, recipient, amount1);
+            TransferHelper.safeTransfer(token1, recipient, amount1);
         }
 
         emit Collect(msg.sender, recipient, tickLower, tickUpper, amount0, amount1);
@@ -866,12 +850,12 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
         //           so the ERC-223 tokens are already in the contract 
         //           and the amount is stored in a `erc223deposit[msg.sender][token]` variable.
         if (zeroForOne) {
-            if (amount1 < 0) TransferHelper.safeTransfer(token1.erc20, recipient, uint256(-amount1));
+            if (amount1 < 0) TransferHelper.safeTransfer(token1, recipient, uint256(-amount1));
 
             // ERC-223 depositing logic
-            if (erc223deposit[swap_sender][token0.erc223] >= uint256(amount0))
+            if (erc223deposit[swap_sender][token0] >= uint256(amount0))
             {
-                erc223deposit[swap_sender][token0.erc223] -= uint256(amount0);
+                erc223deposit[swap_sender][token0] -= uint256(amount0);
             }
             // ERC-20 depositing logic
             else 
@@ -881,12 +865,12 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
                 require(balance0Before.add(uint256(amount0)) <= balance0(), 'IIA');
             }
         } else {
-            if (amount0 < 0) TransferHelper.safeTransfer(token0.erc20, recipient, uint256(-amount0));
+            if (amount0 < 0) TransferHelper.safeTransfer(token0, recipient, uint256(-amount0));
 
             // ERC-223 depositing logic
-            if (erc223deposit[swap_sender][token1.erc223] >= uint256(amount1))
+            if (erc223deposit[swap_sender][token1] >= uint256(amount1))
             {
-                erc223deposit[swap_sender][token1.erc223] -= uint256(amount1);
+                erc223deposit[swap_sender][token1] -= uint256(amount1);
             }
             // ERC-20 depositing logic
             else 
@@ -972,12 +956,12 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
         if (amount0 > 0) {
             if (amount0 == protocolFees.token0) amount0--; // ensure that the slot is not cleared, for gas savings
             protocolFees.token0 -= amount0;
-            TransferHelper.safeTransfer(token0.erc20, recipient, amount0);
+            TransferHelper.safeTransfer(token0, recipient, amount0);
         }
         if (amount1 > 0) {
             if (amount1 == protocolFees.token1) amount1--; // ensure that the slot is not cleared, for gas savings
             protocolFees.token1 -= amount1;
-            TransferHelper.safeTransfer(token1.erc20, recipient, amount1);
+            TransferHelper.safeTransfer(token1, recipient, amount1);
         }
 
         emit CollectProtocol(msg.sender, recipient, amount0, amount1);
