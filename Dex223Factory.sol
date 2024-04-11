@@ -42,7 +42,10 @@ contract Dex223Factory is IDex223Factory, UniswapV3PoolDeployer, NoDelegateCall 
 
     function tokenReceived(address _from, uint _value, bytes memory _data) public returns (bytes4)
     {
-        tokenReceivedCaller = msg.sender;
+        if(_from == address(this) && _value == 0)
+        {
+            tokenReceivedCaller = msg.sender;
+        }
         return 0x8943ec02;
     }
 
