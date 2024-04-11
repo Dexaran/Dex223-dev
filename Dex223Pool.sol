@@ -22,7 +22,7 @@ import './libraries/SqrtPriceMath.sol';
 import './libraries/SwapMath.sol';
 
 import './interfaces/IDex223PoolDeployer.sol';
-import './interfaces/IUniswapV3Factory.sol';
+import './interfaces/IDex223Factory.sol';
 import './interfaces/IERC20Minimal.sol';
 import './interfaces/callback/IUniswapV3MintCallback.sol';
 import './interfaces/callback/IUniswapV3SwapCallback.sol';
