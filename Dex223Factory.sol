@@ -4,6 +4,7 @@ pragma solidity =0.7.6;
 import './interfaces/IUniswapV3Factory.sol';
 
 import './interfaces/ITokenConverter.sol';
+import './interfaces/ITokenStandardIntrospection.sol';
 
 import './Dex223PoolDeployer.sol';
 import './NoDelegateCall.sol';
@@ -16,6 +17,7 @@ contract Dex223Factory is IUniswapV3Factory, UniswapV3PoolDeployer, NoDelegateCa
     /// @inheritdoc IUniswapV3Factory
     address public override owner;
 
+    ITokenStandardIntrospection public standardIntrospection;
     address public tokenReceivedCaller;
 
     ITokenStandardConverter public converter;
@@ -50,16 +52,48 @@ contract Dex223Factory is IUniswapV3Factory, UniswapV3PoolDeployer, NoDelegateCa
         address tokenB,
         uint24 fee
     ) external override noDelegateCall returns (address pool) {
-        address _token0_erc20;
-        address _token1_erc20;
-        address _token0_erc223;
-        address _token1_erc223;
+        require(tokenA != tokenB);
+        (address _token0_erc20, address _token0_erc223, uint8 _token0_standard) = identifyTokens(tokenA);
+        (address _token1_erc20, address _token1_erc223, uint8 _token1_standard) = identifyTokens(tokenB);
+        //(address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
+        
+        require(_token0_erc20 != address(0));
+        int24 tickSpacing = feeAmountTickSpacing[fee];
+        require(tickSpacing != 0);
+        require(getPool[_token0_erc20][_token1_erc20][fee] == address(0));
+        pool = deploy(address(this), _token0_erc20, _token1_erc20, _token0_erc223, _token1_erc223, fee, tickSpacing);
+        getPool[_token0_erc20][_token1_erc20][fee] = pool;
+        // populate mapping in the ALL directions.
+        getPool[_token1_erc20][_token0_erc20][fee] = pool;
+        getPool[_token0_erc20][_token1_erc223][fee] = pool;
+        getPool[_token1_erc20][_token0_erc223][fee] = pool;
+        getPool[_token0_erc223][_token1_erc20][fee] = pool;
+        getPool[_token0_erc223][_token1_erc223][fee] = pool;
+        getPool[_token1_erc223][_token0_erc223][fee] = pool;
+        getPool[_token1_erc223][_token0_erc20][fee] = pool;
+        emit PoolCreated(_token0_erc20, _token1_erc20, fee, tickSpacing, pool);
+        tokenReceivedCaller = address(0);
+    }
+
+    /// @inheritdoc IUniswapV3Factory
+    function setOwner(address _owner) external override {
+        require(msg.sender == owner);
+        emit OwnerChanged(owner, _owner);
+        owner = _owner;
+    }
+
+    function identifyTokens(address _token) internal returns (address erc20_address, address erc223_address, uint8 origin)
+    {
+        // origin      << address of the token origin (always exists)
+        // originERC20 << if the origins standard is ERC20 or not
+        // converted   << alternative version that would be created via ERC-7417 converter, may not exist
+        //                can be predicted as its created via CREATE2
 
         // Not using the standard introspection now but better check it for safety in production.
         bytes memory erc223_output = bytes("0x000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000033232330000000000000000000000000000000000000000000000000000000000");
 
         // Check the provided token's standards.
-        if(converter.isWrapper(tokenA))
+        if(converter.isWrapper(_token))
         {
             // Trust the converter.
             // If the token is a wrapper for something then we know for sure it has an alternative (origin) version
@@ -69,27 +103,23 @@ contract Dex223Factory is IUniswapV3Factory, UniswapV3PoolDeployer, NoDelegateCa
             // otherwise its certainly ERC-20.
 
             (bool success, bytes memory data) =
-                tokenA.staticcall(abi.encodeWithSelector(0x5a3b7e42)); // Call the "standard()" func of ERC-223 token
+                _token.staticcall(abi.encodeWithSelector(0x5a3b7e42)); // Call the "standard()" func of ERC-223 token
                                                                        // If it fails then the token is ERC-20.
-            if(success //&& data == erc223_output
-                                                 ) 
+            if(success /*&& data == erc223_output*/ ) 
             {
-                _token0_erc223 = tokenA;
-                _token0_erc20  = converter.getERC20OriginFor(tokenA);
+                return (converter.getERC20OriginFor(_token), _token, 20);
             }
             else
             {
-                _token0_erc20  = tokenA;
-                //_token0_erc223 = converter.predictWrapperAddress(tokenA, false);
-                _token0_erc223 = converter.getERC223OriginFor(tokenA);
+                return (_token, converter.getERC223OriginFor(_token), 223);
             }
         }
         else 
         {
-            // If the token is not a wrapper according to the converter then we have to test it
+            // If the token is not a wrapper according to the converter then we have to test it.
             // First call the "standard()" function
             (bool success, bytes memory data) =
-                tokenA.staticcall(abi.encodeWithSelector(0x5a3b7e42));
+                _token.staticcall(abi.encodeWithSelector(0x5a3b7e42));
                 if(success && data.length == erc223_output.length)
                 {
                     // Solidity does not know how to compare strings... so we have to do the manual labour.
@@ -99,10 +129,9 @@ contract Dex223Factory is IUniswapV3Factory, UniswapV3PoolDeployer, NoDelegateCa
                     }
                     if(success)
                     {
-                        // If `success` is still true then the provided tokenA replied that it is ERC-223
+                        // If `success` is still true then the provided token replied that it is ERC-223
                         // and it is not a wrapper according to the converter.
-                        _token0_erc223 = tokenA;
-                        _token0_erc20  = converter.predictWrapperAddress(tokenA, false);
+                        return (converter.predictWrapperAddress(_token, false), _token, 223);
                     }
                     else
                     {
@@ -110,35 +139,37 @@ contract Dex223Factory is IUniswapV3Factory, UniswapV3PoolDeployer, NoDelegateCa
                         // It could happen if the token contract contained a permissive fallback function
                         // for example in case the token contract is merged with the ICO contract
                         // which was selling that token and had a permissive fallback function implemented.
+                        // Continue the investigation in this case.
                     }
                 }
 
-            // If the `standard` func call failed then the token can be either
-            // a ERC-223 which does not implement `standard` func
-            // or a ERC-20.
+            // If the `standard` func call failed or succeeded but didnt return "223" then the token can be either
+            // a ERC-223 which does not implement `standard` func properly
+            // or a standard ERC-20.
             // Test it via the `transfer()` function call then. ERC-20 `transfer` calls MUST allow zero transfers,
             // ERC-223 `transfer` calls MAY allow zero transfers and MUST invoke `tokenReceived` in case
             // they do allow zero transfers.
+            // There are plenty of tokens which improperly implement ERC-20 standard however, for example
+            // the most infamous USDT is not compatible with the ERC-20 standard as per its documentation
+            // so we have to deal with it via low level calls.
             
             (bool transfer_success, bytes memory transfer_data) =
-                tokenA.call(abi.encodeWithSelector(IERC20Minimal.transfer.selector, address(this), 0));
+                _token.call(abi.encodeWithSelector(IERC20Minimal.transfer.selector, address(this), 0));
                 if(transfer_success)
                 {
                     if(tokenReceivedCaller == address(0))
                     {
-                        // If the transfer succeeded and the tokenReceivedCaller is not the address of the tokenA
+                        // If the transfer succeeded and the tokenReceivedCaller is not the address of the _token
                         // then the function transfer was executed as if it is ERC-20 and it doesn't invoke 
                         // tokenReceived() on trasnfer so the token is certainly ERC-20.
-                        _token0_erc20  = tokenA;
-                        _token0_erc223 = converter.predictWrapperAddress(tokenA, true);
+                        return (_token, converter.predictWrapperAddress(_token, true), 20);
                     }
-                    else if(tokenReceivedCaller == tokenA)
+                    else if(tokenReceivedCaller == _token)
                     {
-                        // If the transfer succeeded and the tokenReceivedCaller is tokenA address
+                        // If the transfer succeeded and the tokenReceivedCaller is _token address
                         // then the tokenReceived func was properly invoked
-                        // and the tokenA is certainly a ERC-223 token.
-                        _token0_erc223 = tokenA;
-                        _token0_erc20  = converter.predictWrapperAddress(tokenA, false);
+                        // and the _token is certainly a ERC-223 token.
+                        return (converter.predictWrapperAddress(_token, false), _token, 223);
                     }
                 }
                 else 
@@ -149,32 +180,27 @@ contract Dex223Factory is IUniswapV3Factory, UniswapV3PoolDeployer, NoDelegateCa
                     // - otherwise its certainly ERC-20.
                     // Therefore we need to transfer 1 WEI of a token to some contract and then ask it
                     // whether the `tokenReceived` function was invoked upon our transfer or not.
-                    // (And nicely ask it to send the transferred 1 WEI of a token back)
+                    // (And may be nicely ask it to send the transferred 1 WEI of a token back)
 
-                    
+                    // In order to be able to transfer tokens someone has to deposit at least 1 WEI of the _token
+                    // to the Factory address first.
+
+                    IERC20Minimal(_token).transfer(address(standardIntrospection), 1);
+
+                    // Now if the depositAmount(_token) of the standardIntrospection is non-zero
+                    // then the deposited token was recorded via the tokenReceived func
+                    // and tokenA is ERC-223.
+                    // Otherwise tokenA is certainly ERC-20.
+                    if(standardIntrospection.depositedAmount(_token) != 0)
+                    {
+                        return (converter.predictWrapperAddress(_token, false), _token, 223);
+                    }
+                    else 
+                    {
+                        return (_token, converter.predictWrapperAddress(_token, true), 20);
+                    }
                 }
-
         }
-
-        require(tokenA != tokenB);
-        (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
-        require(token0 != address(0));
-        int24 tickSpacing = feeAmountTickSpacing[fee];
-        require(tickSpacing != 0);
-        require(getPool[token0][token1][fee] == address(0));
-        pool = deploy(address(this), _token0_erc20, _token1_erc20, _token0_erc223, _token1_erc223, fee, tickSpacing);
-        getPool[token0][token1][fee] = pool;
-        // populate mapping in the reverse direction, deliberate choice to avoid the cost of comparing addresses
-        getPool[token1][token0][fee] = pool;
-        emit PoolCreated(token0, token1, fee, tickSpacing, pool);
-        tokenReceivedCaller = address(0);
-    }
-
-    /// @inheritdoc IUniswapV3Factory
-    function setOwner(address _owner) external override {
-        require(msg.sender == owner);
-        emit OwnerChanged(owner, _owner);
-        owner = _owner;
     }
     
 
