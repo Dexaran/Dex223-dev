@@ -3,6 +3,8 @@ pragma solidity =0.7.6;
 
 import './interfaces/IUniswapV3Factory.sol';
 
+import './interfaces/ITokenConverter.sol';
+
 import './Dex223PoolDeployer.sol';
 import './NoDelegateCall.sol';
 
@@ -13,6 +15,7 @@ import './Dex223Pool.sol';
 contract Dex223Factory is IUniswapV3Factory, UniswapV3PoolDeployer, NoDelegateCall {
     /// @inheritdoc IUniswapV3Factory
     address public override owner;
+    ITokenStandardConverter converter = ITokenStandardConverter(0x08b9DfA96d4997b460dFEb1aBb994a7279dDb420);
 
     /// @inheritdoc IUniswapV3Factory
     mapping(uint24 => int24) public override feeAmountTickSpacing;
@@ -37,13 +40,15 @@ contract Dex223Factory is IUniswapV3Factory, UniswapV3PoolDeployer, NoDelegateCa
         address tokenB,
         uint24 fee
     ) external override noDelegateCall returns (address pool) {
+        address token0_223_test;
+        address token1_223_test;
         require(tokenA != tokenB);
         (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
         require(token0 != address(0));
         int24 tickSpacing = feeAmountTickSpacing[fee];
         require(tickSpacing != 0);
         require(getPool[token0][token1][fee] == address(0));
-        pool = deploy(address(this), token0, token1, fee, tickSpacing);
+        pool = deploy(address(this), token0, token1, token0_223_test, token1_223_test, fee, tickSpacing);
         getPool[token0][token1][fee] = pool;
         // populate mapping in the reverse direction, deliberate choice to avoid the cost of comparing addresses
         getPool[token1][token0][fee] = pool;
