@@ -141,23 +141,11 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
 
     constructor() {
         int24 _tickSpacing;
-        (factory, token0.erc20, token1.erc20, fee, _tickSpacing) = IUniswapV3PoolDeployer(msg.sender).parameters();
+        (factory, token0.erc20, token1.erc20, token0.erc223, token1.erc223, fee, _tickSpacing) = IDex223PoolDeployer(msg.sender).parameters();
         tickSpacing = _tickSpacing;
 
         maxLiquidityPerTick = Tick.tickSpacingToMaxLiquidityPerTick(_tickSpacing);
     }
-
-/*
-    struct SwapParams
-    {
-        bytes4 sig;
-        address recipient;
-        bool zeroForOne;
-        int256 amountSpecified;
-        uint160 sqrtPriceLimitX96;
-        bytes data;
-    }
-*/
     
 /**
  * @dev Standard ERC223 function that will handle incoming token transfers.
@@ -179,6 +167,7 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
             }
         */
             (bool success, bytes memory _data_) = address(this).delegatecall(_data);
+            delete(_data);
             require(success, "23F");
         }
 
