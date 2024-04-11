@@ -124,7 +124,7 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
 
     /// @dev Prevents calling a function from anyone except the address returned by IUniswapV3Factory#owner()
     modifier onlyFactoryOwner() {
-        require(msg.sender == IUniswapV3Factory(factory).owner());
+        require(msg.sender == IDex223Factory(factory).owner());
         _;
     }
 
