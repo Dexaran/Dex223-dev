@@ -21,7 +21,7 @@ import './libraries/LiquidityMath.sol';
 import './libraries/SqrtPriceMath.sol';
 import './libraries/SwapMath.sol';
 
-import './interfaces/IUniswapV3PoolDeployer.sol';
+import './interfaces/IDex223PoolDeployer.sol';
 import './interfaces/IUniswapV3Factory.sol';
 import './interfaces/IERC20Minimal.sol';
 import './interfaces/callback/IUniswapV3MintCallback.sol';
