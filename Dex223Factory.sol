@@ -60,6 +60,18 @@ contract Dex223Factory is IDex223Factory, UniswapV3PoolDeployer, NoDelegateCall 
         (address _token1_erc20, address _token1_erc223, uint8 _token1_standard) = identifyTokens(tokenB);
         //(address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
 
+        if(_token0_erc20 > _token1_erc20)
+        {
+            // Make sure token0 < token1 ERC-20-wise.
+            tokenA = _token0_erc20;
+            _token0_erc20 = _token1_erc20;
+            _token1_erc20 = tokenA;
+
+            tokenA = _token0_erc223;
+            _token0_erc223 = _token1_erc223;
+            _token1_erc223 = tokenA;
+        }
+
         require(_token0_erc20 != address(0));
         int24 tickSpacing = feeAmountTickSpacing[fee];
         require(tickSpacing != 0);
