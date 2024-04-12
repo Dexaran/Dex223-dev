@@ -680,7 +680,7 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
         bool zeroForOne,
         int256 amountSpecified,
         uint160 sqrtPriceLimitX96,
-        bool prefer223,
+        uint256 amountOut223,
         bytes memory data
     ) public override adjustableSender /*noDelegateCall*/ // noDelegateCall will not prevent delegatecalling
                                                         // this method from the same contract via `tokenReceived` of ERC-223
@@ -881,56 +881,18 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
             
             if (amount1 < 0) 
             {
-                if(prefer223)
+                if(amountOut223 == 0)
                 {
-                    // Optimistically attempt to transfer the full amount of tokens to the recipient.
-                    // Optimizes gas usages for situations where there are enough tokens in the pool
-                    // to provide the recipient with the tokens of the chosen standard
-                    // without a need to convert them via ERC-7417.
-                    (bool success, bytes memory data) =
-                        token1.erc223.call(abi.encodeWithSelector(IERC20Minimal.transfer.selector, recipient, uint256(-amount1)));
-
-                        //require(success && (data.length == 0 || abi.decode(data, (bool))), 'TF');
-                    if(!success)
-                    {
-                        // The transfer didn't work and it could be because there are not enough tokens in the contract
-                        // to pay in the selected standard.
-                        // We need to call the converter and transform part of the tokens from pools balance
-                        // to the tokens of desired standard.
-
-                        if(IERC20Minimal(token1.erc223).balanceOf(address(this)) < uint256(-amount1))
-                        {
-                            IERC20Minimal(token1.erc223).transfer(address(converter), uint256(-amount1) - IERC20Minimal(token1.erc223).balanceOf(address(this)));
-                        }
-                        // Now there should be enough tokens to cover the payment.
-                        TransferHelper.safeTransfer(token1.erc223, recipient, uint256(-amount1));
-                    }
-                } 
+                    TransferHelper.safeTransfer(token1.erc20, recipient, uint256(-amount1));
+                }
+                else if(amountOut223 >= uint256(-amount1))
+                {
+                    TransferHelper.safeTransfer(token1.erc223, recipient, uint256(-amount1));
+                }
                 else 
                 {
-                    // Optimistically attempt to transfer the full amount of tokens to the recipient.
-                    (bool success, bytes memory data) =
-                        token1.erc20.call(abi.encodeWithSelector(IERC20Minimal.transfer.selector, recipient, uint256(-amount1)));
-
-                        //require(success && (data.length == 0 || abi.decode(data, (bool))), 'TF');
-                    if(!success)
-                    {
-                        // Not enough ERC-20 tokens on the pools balance
-                        // Need to convert ERC-223 version to ERC-20 then deliver it to the user.
-
-                        if(IERC20Minimal(token1.erc20).balanceOf(address(this)) < uint256(-amount1))
-                        {
-                            // Approve the converter first if necessary.
-                            // This approval is expected to execute once and forever.
-                            if(IERC20Minimal(token1.erc20).allowance(address(this), address(converter)) < uint256(-amount1))
-                            {
-                                IERC20Minimal(token1.erc20).approve(address(converter), 2**256-1);
-                            }
-                            converter.convertERC20(token1.erc20, uint256(-amount1) - IERC20Minimal(token1.erc20).balanceOf(address(this)));
-                        }
-                        // Now there should be enough tokens to cover the payment.
-                        TransferHelper.safeTransfer(token1.erc20, recipient, uint256(-amount1));
-                    }
+                    TransferHelper.safeTransfer(token1.erc223, recipient, amountOut223);
+                    TransferHelper.safeTransfer(token1.erc20,  recipient, uint256(-amount1) - amountOut223);
                 }
             }
         } else {
@@ -950,62 +912,23 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
                 IUniswapV3SwapCallback(swap_sender).uniswapV3SwapCallback(amount0, amount1, data);
                 require(balance1Before.add(uint256(amount1)) <= balance1(), 'IIA');
             }
-
             
-            //if (amount0 < 0) TransferHelper.safeTransfer(token0.erc20, recipient, uint256(-amount0));
-
-            
-            if(prefer223)
+            if (amount0 < 0) 
+            {
+                if(amountOut223 == 0)
                 {
-                    // Optimistically attempt to transfer the full amount of tokens to the recipient.
-                    // Optimizes gas usages for situations where there are enough tokens in the pool
-                    // to provide the recipient with the tokens of the chosen standard
-                    // without a need to convert them via ERC-7417.
-                    (bool success, bytes memory data) =
-                        token0.erc223.call(abi.encodeWithSelector(IERC20Minimal.transfer.selector, recipient, uint256(-amount0)));
-
-                        //require(success && (data.length == 0 || abi.decode(data, (bool))), 'TF');
-                    if(!success)
-                    {
-                        // The transfer didn't work and it could be because there are not enough tokens in the contract
-                        // to pay in the selected standard.
-                        // We need to call the converter and transform part of the tokens from pools balance
-                        // to the tokens of desired standard.
-
-                        if(IERC20Minimal(token0.erc223).balanceOf(address(this)) < uint256(-amount0))
-                        {
-                            IERC20Minimal(token0.erc223).transfer(address(converter), uint256(-amount0) - IERC20Minimal(token0.erc223).balanceOf(address(this)));
-                        }
-                        // Now there should be enough tokens to cover the payment.
-                        TransferHelper.safeTransfer(token0.erc223, recipient, uint256(-amount0));
-                    }
-                } 
+                    TransferHelper.safeTransfer(token0.erc20, recipient, uint256(-amount0));
+                }
+                else if(amountOut223 >= uint256(-amount0))
+                {
+                    TransferHelper.safeTransfer(token0.erc223, recipient, uint256(-amount0));
+                }
                 else 
                 {
-                    // Optimistically attempt to transfer the full amount of tokens to the recipient.
-                    (bool success, bytes memory data) =
-                        token0.erc20.call(abi.encodeWithSelector(IERC20Minimal.transfer.selector, recipient, uint256(-amount0)));
-
-                        //require(success && (data.length == 0 || abi.decode(data, (bool))), 'TF');
-                    if(!success)
-                    {
-                        // Not enough ERC-20 tokens on the pools balance
-                        // Need to convert ERC-223 version to ERC-20 then deliver it to the user.
-
-                        if(IERC20Minimal(token0.erc20).balanceOf(address(this)) < uint256(-amount0))
-                        {
-                            // Approve the converter first if necessary.
-                            // This approval is expected to execute once and forever.
-                            if(IERC20Minimal(token0.erc20).allowance(address(this), address(converter)) < uint256(-amount0))
-                            {
-                                IERC20Minimal(token0.erc20).approve(address(converter), 2**256-1);
-                            }
-                            converter.convertERC20(token0.erc20, uint256(-amount0) - IERC20Minimal(token0.erc20).balanceOf(address(this)));
-                        }
-                        // Now there should be enough tokens to cover the payment.
-                        TransferHelper.safeTransfer(token0.erc20, recipient, uint256(-amount0));
-                    }
+                    TransferHelper.safeTransfer(token0.erc223, recipient, amountOut223);
+                    TransferHelper.safeTransfer(token0.erc20,  recipient, uint256(-amount0) - amountOut223);
                 }
+            }
         }
 
         emit Swap(swap_sender, recipient, amount0, amount1, state.sqrtPriceX96, state.liquidity, state.tick);
