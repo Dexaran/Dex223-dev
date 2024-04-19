@@ -17,6 +17,8 @@ contract Dex223Factory is IDex223Factory, UniswapV3PoolDeployer, NoDelegateCall 
     // @inheritdoc IUniswapV3Factory
     address public override owner;
 
+    address public pool_lib;
+
     ITokenStandardIntrospection public standardIntrospection;
     address public tokenReceivedCaller;
 
@@ -77,6 +79,7 @@ contract Dex223Factory is IDex223Factory, UniswapV3PoolDeployer, NoDelegateCall 
         require(tickSpacing != 0);
         require(getPool[_token0_erc20][_token1_erc20][fee] == address(0));
         pool = deploy(address(this), _token0_erc20, _token1_erc20, _token0_erc223, _token1_erc223, fee, tickSpacing);
+        Dex223Pool(pool).set(_token0_erc20, _token1_erc20, _token0_erc223, _token1_erc223, fee, tickSpacing);
         getPool[_token0_erc20][_token1_erc20][fee] = pool;
         // populate mapping in ALL directions.
         getPool[_token1_erc20][_token0_erc20][fee] = pool;
