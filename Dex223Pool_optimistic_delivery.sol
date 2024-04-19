@@ -1,4 +1,11 @@
 // SPDX-License-Identifier: BUSL-1.1
+
+/////////
+///////// Does not work with the current version of the PoolActions interface
+///////// requires swap(...) func signature modification.
+/////////
+
+
 pragma solidity >=0.7.6;
 pragma abicoder v2;
 
