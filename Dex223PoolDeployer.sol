@@ -37,8 +37,8 @@ contract UniswapV3PoolDeployer is IDex223PoolDeployer {
         uint24 fee,
         int24 tickSpacing
     ) internal returns (address pool) {
-        parameters = Parameters({factory: factory, token0_erc20: token0_erc20, token1_erc20: token1_erc20, token0_erc223: token0_erc223, token1_erc223: token1_erc223, fee: fee, tickSpacing: tickSpacing});
+        //parameters = Parameters({factory: factory, token0_erc20: token0_erc20, token1_erc20: token1_erc20, token0_erc223: token0_erc223, token1_erc223: token1_erc223, fee: fee, tickSpacing: tickSpacing});
         pool = address(new Dex223Pool{salt: keccak256(abi.encode(token0_erc20, token1_erc20, fee))}());
-        delete parameters;
+        //delete parameters;
     }
 }
