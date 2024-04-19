@@ -77,7 +77,8 @@ interface IUniswapV3PoolActions {
         bool zeroForOne,
         int256 amountSpecified,
         uint160 sqrtPriceLimitX96,
-        bytes calldata data
+        uint256 amountOut223,
+        bytes memory data
     ) external returns (int256 amount0, int256 amount1);
 
     /// @notice Receive token0 and/or token1 and pay it back, plus a fee, in the callback
