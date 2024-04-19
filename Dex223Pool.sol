@@ -50,21 +50,23 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
     }
 
     /// @inheritdoc IUniswapV3PoolImmutables
-    address public immutable override factory;
+    address public override factory;
 
-    ITokenStandardConverter public converter;
+    address public pool_lib;
+
+    //ITokenStandardConverter public converter;
 
     Token public token0;
     Token public token1;
 
     /// @inheritdoc IUniswapV3PoolImmutables
-    uint24 public immutable override fee;
+    uint24 public override fee;
 
     /// @inheritdoc IUniswapV3PoolImmutables
-    int24 public immutable override tickSpacing;
+    int24 public override tickSpacing;
 
     /// @inheritdoc IUniswapV3PoolImmutables
-    uint128 public immutable override maxLiquidityPerTick;
+    uint128 public override maxLiquidityPerTick;
 
     struct Slot0 {
         // the current price
@@ -144,10 +146,24 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
     }
 
     constructor() {
+        /*
         int24 _tickSpacing;
         (factory, token0.erc20, token1.erc20, token0.erc223, token1.erc223, fee, _tickSpacing) = IDex223PoolDeployer(msg.sender).parameters();
         tickSpacing = _tickSpacing;
 
+        maxLiquidityPerTick = Tick.tickSpacingToMaxLiquidityPerTick(_tickSpacing);
+        */
+        factory = msg.sender;
+    }
+
+    function set(address _t0erc20, address _t1erc20, address _t0erc223, address _t1erc223, uint24 _fee, int24 _tickSpacing) external 
+    {
+        require(msg.sender == factory);
+        token0.erc20 = _t0erc20;
+        token1.erc20 = _t1erc20;
+        token0.erc223 = _t0erc223;
+        token1.erc223 = _t1erc223;
+        fee = _fee;
         maxLiquidityPerTick = Tick.tickSpacingToMaxLiquidityPerTick(_tickSpacing);
     }
     
@@ -202,9 +218,9 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
     }
 
     /// @dev Returns the block timestamp truncated to 32 bits, i.e. mod 2**32. This method is overridden in tests.
-    function _blockTimestamp() internal view virtual returns (uint32) {
+    /*function _blockTimestamp() internal view virtual returns (uint32) {
         return uint32(block.timestamp); // truncation is desired
-    }
+    } */
 
     /// @dev Get the pool's balance of token0
     /// @dev This function is gas optimized to avoid a redundant extcodesize check in addition to the returndatasize
@@ -288,7 +304,7 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
                 secondsOutsideLower - secondsOutsideUpper
             );
         } else if (_slot0.tick < tickUpper) {
-            uint32 time = _blockTimestamp();
+            uint32 time = uint32(block.timestamp);
             (int56 tickCumulative, uint160 secondsPerLiquidityCumulativeX128) =
                 observations.observeSingle(
                     time,
@@ -324,7 +340,7 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
     {
         return
             observations.observe(
-                _blockTimestamp(),
+                uint32(block.timestamp),
                 secondsAgos,
                 slot0.tick,
                 slot0.observationIndex,
@@ -355,7 +371,7 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
 
         int24 tick = TickMath.getTickAtSqrtRatio(sqrtPriceX96);
 
-        (uint16 cardinality, uint16 cardinalityNext) = observations.initialize(_blockTimestamp());
+        (uint16 cardinality, uint16 cardinalityNext) = observations.initialize(uint32(block.timestamp));
 
         slot0 = Slot0({
             sqrtPriceX96: sqrtPriceX96,
@@ -422,7 +438,7 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
                 // write an oracle entry
                 (slot0.observationIndex, slot0.observationCardinality) = observations.write(
                     _slot0.observationIndex,
-                    _blockTimestamp(),
+                    uint32(block.timestamp),
                     _slot0.tick,
                     liquidityBefore,
                     _slot0.observationCardinality,
@@ -474,7 +490,7 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
         bool flippedLower;
         bool flippedUpper;
         if (liquidityDelta != 0) {
-            uint32 time = _blockTimestamp();
+            uint32 time = uint32(block.timestamp);
             (int56 tickCumulative, uint160 secondsPerLiquidityCumulativeX128) =
                 observations.observeSingle(
                     time,
@@ -686,254 +702,19 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
                                                         // this method from the same contract via `tokenReceived` of ERC-223
      returns (int256 amount0, int256 amount1) {
 
-        require(amountSpecified != 0, 'AS');
+        (bool success, bytes memory reason) = pool_lib.delegatecall(abi.encodeWithSignature("swap(address,bool,int256,uint160,bytes)", recipient, zeroForOne, amountSpecified, sqrtPriceLimitX96, data));
 
-        Slot0 memory slot0Start = slot0;
-
-        require(slot0Start.unlocked, 'LOK');
-        require(
-            zeroForOne
-                ? sqrtPriceLimitX96 < slot0Start.sqrtPriceX96 && sqrtPriceLimitX96 > TickMath.MIN_SQRT_RATIO
-                : sqrtPriceLimitX96 > slot0Start.sqrtPriceX96 && sqrtPriceLimitX96 < TickMath.MAX_SQRT_RATIO,
-            'SPL'
-        );
-
-        slot0.unlocked = false;
-
-        SwapCache memory cache =
-            SwapCache({
-                liquidityStart: liquidity,
-                blockTimestamp: _blockTimestamp(),
-                feeProtocol: zeroForOne ? (slot0Start.feeProtocol % 16) : (slot0Start.feeProtocol >> 4),
-                secondsPerLiquidityCumulativeX128: 0,
-                tickCumulative: 0,
-                computedLatestObservation: false
-            });
-
-        bool exactInput = amountSpecified > 0;
-
-        SwapState memory state =
-            SwapState({
-                amountSpecifiedRemaining: amountSpecified,
-                amountCalculated: 0,
-                sqrtPriceX96: slot0Start.sqrtPriceX96,
-                tick: slot0Start.tick,
-                feeGrowthGlobalX128: zeroForOne ? feeGrowthGlobal0X128 : feeGrowthGlobal1X128,
-                protocolFee: 0,
-                liquidity: cache.liquidityStart
-            });
-
-        // continue swapping as long as we haven't used the entire input/output and haven't reached the price limit
-        while (state.amountSpecifiedRemaining != 0 && state.sqrtPriceX96 != sqrtPriceLimitX96) {
-            StepComputations memory step;
-
-            step.sqrtPriceStartX96 = state.sqrtPriceX96;
-
-            (step.tickNext, step.initialized) = tickBitmap.nextInitializedTickWithinOneWord(
-                state.tick,
-                tickSpacing,
-                zeroForOne
-            );
-
-            // ensure that we do not overshoot the min/max tick, as the tick bitmap is not aware of these bounds
-            if (step.tickNext < TickMath.MIN_TICK) {
-                step.tickNext = TickMath.MIN_TICK;
-            } else if (step.tickNext > TickMath.MAX_TICK) {
-                step.tickNext = TickMath.MAX_TICK;
-            }
-
-            // get the price for the next tick
-            step.sqrtPriceNextX96 = TickMath.getSqrtRatioAtTick(step.tickNext);
-
-            // compute values to swap to the target tick, price limit, or point where input/output amount is exhausted
-            (state.sqrtPriceX96, step.amountIn, step.amountOut, step.feeAmount) = SwapMath.computeSwapStep(
-                state.sqrtPriceX96,
-                (zeroForOne ? step.sqrtPriceNextX96 < sqrtPriceLimitX96 : step.sqrtPriceNextX96 > sqrtPriceLimitX96)
-                    ? sqrtPriceLimitX96
-                    : step.sqrtPriceNextX96,
-                state.liquidity,
-                state.amountSpecifiedRemaining,
-                fee
-            );
-
-            if (exactInput) {
-                state.amountSpecifiedRemaining -= (step.amountIn + step.feeAmount).toInt256();
-                state.amountCalculated = state.amountCalculated.sub(step.amountOut.toInt256());
-            } else {
-                state.amountSpecifiedRemaining += step.amountOut.toInt256();
-                state.amountCalculated = state.amountCalculated.add((step.amountIn + step.feeAmount).toInt256());
-            }
-
-            // if the protocol fee is on, calculate how much is owed, decrement feeAmount, and increment protocolFee
-            if (cache.feeProtocol > 0) {
-                uint256 delta = step.feeAmount / cache.feeProtocol;
-                step.feeAmount -= delta;
-                state.protocolFee += uint128(delta);
-            }
-
-            // update global fee tracker
-            if (state.liquidity > 0)
-                state.feeGrowthGlobalX128 += FullMath.mulDiv(step.feeAmount, FixedPoint128.Q128, state.liquidity);
-
-            // shift tick if we reached the next price
-            if (state.sqrtPriceX96 == step.sqrtPriceNextX96) {
-                // if the tick is initialized, run the tick transition
-                if (step.initialized) {
-                    // check for the placeholder value, which we replace with the actual value the first time the swap
-                    // crosses an initialized tick
-                    if (!cache.computedLatestObservation) {
-                        (cache.tickCumulative, cache.secondsPerLiquidityCumulativeX128) = observations.observeSingle(
-                            cache.blockTimestamp,
-                            0,
-                            slot0Start.tick,
-                            slot0Start.observationIndex,
-                            cache.liquidityStart,
-                            slot0Start.observationCardinality
-                        );
-                        cache.computedLatestObservation = true;
-                    }
-                    int128 liquidityNet =
-                        ticks.cross(
-                            step.tickNext,
-                            (zeroForOne ? state.feeGrowthGlobalX128 : feeGrowthGlobal0X128),
-                            (zeroForOne ? feeGrowthGlobal1X128 : state.feeGrowthGlobalX128),
-                            cache.secondsPerLiquidityCumulativeX128,
-                            cache.tickCumulative,
-                            cache.blockTimestamp
-                        );
-                    // if we're moving leftward, we interpret liquidityNet as the opposite sign
-                    // safe because liquidityNet cannot be type(int128).min
-                    if (zeroForOne) liquidityNet = -liquidityNet;
-
-                    state.liquidity = LiquidityMath.addDelta(state.liquidity, liquidityNet);
-                }
-
-                state.tick = zeroForOne ? step.tickNext - 1 : step.tickNext;
-            } else if (state.sqrtPriceX96 != step.sqrtPriceStartX96) {
-                // recompute unless we're on a lower tick boundary (i.e. already transitioned ticks), and haven't moved
-                state.tick = TickMath.getTickAtSqrtRatio(state.sqrtPriceX96);
-            }
-        }
-
-        // update tick and write an oracle entry if the tick change
-        if (state.tick != slot0Start.tick) {
-            (uint16 observationIndex, uint16 observationCardinality) =
-                observations.write(
-                    slot0Start.observationIndex,
-                    cache.blockTimestamp,
-                    slot0Start.tick,
-                    cache.liquidityStart,
-                    slot0Start.observationCardinality,
-                    slot0Start.observationCardinalityNext
-                );
-            (slot0.sqrtPriceX96, slot0.tick, slot0.observationIndex, slot0.observationCardinality) = (
-                state.sqrtPriceX96,
-                state.tick,
-                observationIndex,
-                observationCardinality
-            );
+        if (success) {
+            (amount0, amount1) = abi.decode(reason, (int256, int256));
         } else {
-            // otherwise just update the price
-            slot0.sqrtPriceX96 = state.sqrtPriceX96;
-        }
-
-        // update liquidity if it changed
-        if (cache.liquidityStart != state.liquidity) liquidity = state.liquidity;
-
-        // update fee growth global and, if necessary, protocol fees
-        // overflow is acceptable, protocol has to withdraw before it hits type(uint128).max fees
-        if (zeroForOne) {
-            feeGrowthGlobal0X128 = state.feeGrowthGlobalX128;
-            if (state.protocolFee > 0) protocolFees.token0 += state.protocolFee;
-        } else {
-            feeGrowthGlobal1X128 = state.feeGrowthGlobalX128;
-            if (state.protocolFee > 0) protocolFees.token1 += state.protocolFee;
-        }
-
-        (amount0, amount1) = zeroForOne == exactInput
-            ? (amountSpecified - state.amountSpecifiedRemaining, state.amountCalculated)
-            : (state.amountCalculated, amountSpecified - state.amountSpecifiedRemaining);
-
-        // do the transfers and collect payment
-        // @Dexaran: Adjusting the token delivery method for ERC-20 and ERC-223 tokens
-        //           in case of ERC-223 this `swap()` func is called within `tokenReceived()` invocation
-        //           so the ERC-223 tokens are already in the contract 
-        //           and the amount is stored in the `erc223deposit[msg.sender][token]` variable.
-        if (zeroForOne) {
-
-            // SECURITY WARNING!
-            // In order to prevent re-entrancy attacks
-            // first subtract the deposited amount or pull the tokens from the swap sender
-            // then deliver the swapped amount.
-
-            // ERC-223 depositing logic
-            if (erc223deposit[swap_sender][token0.erc223] >= uint256(amount0))
-            {
-                erc223deposit[swap_sender][token0.erc223] -= uint256(amount0);
-            }
-            // ERC-20 depositing logic
-            else 
-            {
-                uint256 balance0Before = balance0();
-                IUniswapV3SwapCallback(swap_sender).uniswapV3SwapCallback(amount0, amount1, data);
-                require(balance0Before.add(uint256(amount0)) <= balance0(), 'IIA');
-            }
-            
-            if (amount1 < 0) 
-            {
-                if(amountOut223 == 0)
-                {
-                    TransferHelper.safeTransfer(token1.erc20, recipient, uint256(-amount1));
-                }
-                else if(amountOut223 >= uint256(-amount1))
-                {
-                    TransferHelper.safeTransfer(token1.erc223, recipient, uint256(-amount1));
-                }
-                else 
-                {
-                    TransferHelper.safeTransfer(token1.erc223, recipient, amountOut223);
-                    TransferHelper.safeTransfer(token1.erc20,  recipient, uint256(-amount1) - amountOut223);
-                }
-            }
-        } else {
-
-            // Again, first receive the payment, then deliver the tokens.
-            // We don't want to be hacked as TheDAO was.
-
-            // ERC-223 depositing logic
-            if (erc223deposit[swap_sender][token1.erc223] >= uint256(amount1))
-            {
-                erc223deposit[swap_sender][token1.erc223] -= uint256(amount1);
-            }
-            // ERC-20 depositing logic
-            else 
-            {
-                uint256 balance1Before = balance1();
-                IUniswapV3SwapCallback(swap_sender).uniswapV3SwapCallback(amount0, amount1, data);
-                require(balance1Before.add(uint256(amount1)) <= balance1(), 'IIA');
-            }
-            
-            if (amount0 < 0) 
-            {
-                if(amountOut223 == 0)
-                {
-                    TransferHelper.safeTransfer(token0.erc20, recipient, uint256(-amount0));
-                }
-                else if(amountOut223 >= uint256(-amount0))
-                {
-                    TransferHelper.safeTransfer(token0.erc223, recipient, uint256(-amount0));
-                }
-                else 
-                {
-                    TransferHelper.safeTransfer(token0.erc223, recipient, amountOut223);
-                    TransferHelper.safeTransfer(token0.erc20,  recipient, uint256(-amount0) - amountOut223);
-                }
+            uint256 val = abi.decode(reason, (uint256));
+            assembly {
+                let ptr := mload(0x40)
+                mstore(ptr, val)
+                revert(ptr, 32)
             }
         }
-
-        emit Swap(swap_sender, recipient, amount0, amount1, state.sqrtPriceX96, state.liquidity, state.tick);
-        slot0.unlocked = true;
-    }
+     }
 
     /// @inheritdoc IUniswapV3PoolActions
     /*
