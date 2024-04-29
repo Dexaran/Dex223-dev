@@ -185,6 +185,8 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
  */
     function tokenReceived(address _from, uint _value, bytes memory _data) public returns (bytes4)
     {
+        // TODO: Reentrancy safety checks.
+
         swap_sender = _from;
         erc223deposit[_from][msg.sender] += _value;   // add token to user balance
         if (_data.length != 0) {
@@ -206,12 +208,14 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
         ////  Commented for testing purposes.
         ////  if (erc223deposit[_from][msg.sender] != 0) TransferHelper.safeTransfer(msg.sender, _from, erc223deposit[_from][msg.sender]);
         
+        // TODO: Auto-extract excess of deposited ERC-223 tokens after the main logic of the func.
         swap_sender = address(0);
         return 0x8943ec02;
     }
 
     // allow user to withdraw transferred ERC223 tokens
     /*
+    // TODO: Allow users to withdraw tokens in case of over-depositing.
     function withdraw(address token, uint amount) adjustableSender public {
         uint _userBalance = erc223deposit[swap_sender][token];
         if(amount == 0) amount = _userBalance;
