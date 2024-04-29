@@ -40,7 +40,7 @@ contract Dex223Factory is IDex223Factory, UniswapV3PoolDeployer, NoDelegateCall 
     constructor() {
         owner = msg.sender;
         converter = ITokenStandardConverter(0x5B38Da6a701c568545dCfcB03FcB875f56beddC4); // Just some test address. Replace with a mainnet ERC-7417 converter instead!
-        pool_lib = 0x5B38Da6a701c568545dCfcB03FcB875f56beddC4;
+        //pool_lib = 0x5B38Da6a701c568545dCfcB03FcB875f56beddC4;
         emit OwnerChanged(address(0), msg.sender);
         feeAmountTickSpacing[500] = 10;
         emit FeeAmountEnabled(500, 10);
