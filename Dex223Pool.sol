@@ -211,6 +211,7 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
     }
 
     // allow user to withdraw transferred ERC223 tokens
+    /*
     function withdraw(address token, uint amount) adjustableSender public {
         uint _userBalance = erc223deposit[swap_sender][token];
         if(amount == 0) amount = _userBalance;
@@ -218,6 +219,7 @@ contract Dex223Pool is IUniswapV3Pool, NoDelegateCall {
         erc223deposit[swap_sender][token] = _userBalance - amount;
         TransferHelper.safeTransfer(token, swap_sender, amount);
     }
+    */
 
     /// @dev Common checks for valid tick inputs.
     function checkTicks(int24 tickLower, int24 tickUpper) private pure {
