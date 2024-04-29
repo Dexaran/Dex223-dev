@@ -67,6 +67,10 @@ contract Dex223Factory is IDex223Factory, UniswapV3PoolDeployer, NoDelegateCall 
         address tokenB_erc223,
         uint24 fee
     ) external override noDelegateCall returns (address pool) {
+
+        // TODO: Add pool correctness safety checks via Converter.
+
+
         //require(tokenA != tokenB);
         //(address _token0_erc20, address _token0_erc223, uint8 _token0_standard) = identifyTokens(tokenA);
         //(address _token1_erc20, address _token1_erc223, uint8 _token1_standard) = identifyTokens(tokenB);
