@@ -45,7 +45,9 @@ interface IUniswapV3PoolActions {
         int24 tickLower,
         int24 tickUpper,
         uint128 amount0Requested,
-        uint128 amount1Requested
+        uint128 amount1Requested,
+        bool token0_223,
+        bool token1_223
     ) external returns (uint128 amount0, uint128 amount1);
 
     /// @notice Burn liquidity from the sender and account tokens owed for the liquidity to the position
@@ -77,7 +79,7 @@ interface IUniswapV3PoolActions {
         bool zeroForOne,
         int256 amountSpecified,
         uint160 sqrtPriceLimitX96,
-        uint256 amountOut223,
+        bool prefer223,
         bytes memory data
     ) external returns (int256 amount0, int256 amount1);
 
