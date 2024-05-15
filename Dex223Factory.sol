@@ -97,7 +97,7 @@ contract Dex223Factory is IDex223Factory, UniswapV3PoolDeployer, NoDelegateCall 
         require(tickSpacing != 0);
         require(getPool[tokenA_erc20][tokenB_erc20][fee] == address(0));
         pool = deploy(address(this), tokenA_erc20, tokenB_erc20, tokenA_erc223, tokenB_erc223, fee, tickSpacing);
-        Dex223Pool(pool).set(tokenA_erc223, tokenB_erc223, pool_lib);
+        Dex223Pool(pool).set(tokenA_erc223, tokenB_erc223, pool_lib, address(converter));
         getPool[tokenA_erc20][tokenB_erc20][fee] = pool;
         // populate mapping in ALL directions.
         getPool[tokenB_erc20][tokenA_erc20][fee] = pool;
